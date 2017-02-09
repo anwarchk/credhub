@@ -267,7 +267,7 @@ public class SecretsController {
         return createErrorResponse("error.credential_not_found", HttpStatus.NOT_FOUND);
       }
 
-      return storeSecret(secretName, handler, parsedRequestBody, existingNamedSecret, willWrite);
+      return storeSecret(secretName, handler, parsedRequestBody, existingNamedSecret, overwrite, regenerate);
     });
   }
 
@@ -279,7 +279,7 @@ public class SecretsController {
                                         SecretKindMappingFactory namedSecretHandler,
                                         DocumentContext parsed,
                                         NamedSecret existingNamedSecret,
-                                        boolean willWrite) {
+                                        boolean overwrite, boolean regenerate) {
     try {
       String requestedSecretType = parsed.read("$.type");
       final SecretKind secretKind = (existingNamedSecret != null ?
@@ -290,9 +290,14 @@ public class SecretsController {
       secretPath = existingNamedSecret == null ? secretPath : existingNamedSecret.getName();
 
       NamedSecret storedNamedSecret;
-      if (willWrite) {
+      if (!overwrite && !regenerate){
+        storedNamedSecret = secretKind.lift(namedSecretHandler.make(secretPath, parsed)).apply(existingNamedSecret);
+        storedNamedSecret = secretDataService.createIfNotExists(storedNamedSecret);
+      }
+      else if (overwrite || regenerate ||existingNamedSecret == null) {
         storedNamedSecret = secretKind.lift(namedSecretHandler.make(secretPath, parsed)).apply(existingNamedSecret);
         storedNamedSecret = secretDataService.save(storedNamedSecret);
+
       } else {
         // To catch invalid parameters, validate request even though we throw away the result.
         // We need to apply it to null or Hibernate may decide to save the record.

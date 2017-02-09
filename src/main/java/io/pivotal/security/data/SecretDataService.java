@@ -15,6 +15,8 @@ import org.springframework.data.domain.Slice;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import javax.transaction.Transactional;
+
 import static com.google.common.collect.Lists.newArrayList;
 
 import java.time.Instant;
@@ -69,6 +71,25 @@ public class SecretDataService {
     }
 
     return secretRepository.saveAndFlush(namedSecret);
+  }
+
+  public <Z extends NamedSecret> Z createIfNotExists(Z namedSecret) {
+    SecretName newSecretName;
+    namedSecret.getSecretName().setName(addLeadingSlashIfMissing(namedSecret.getName()));
+    if (namedSecret.getEncryptionKeyUuid() == null) {
+      namedSecret.setEncryptionKeyUuid(encryptionKeyCanaryMapper.getActiveUuid());
+    }
+
+    SecretName secretName = namedSecret.getSecretName();
+    newSecretName = createSecretName(secretName.getName());
+
+    if (newSecretName != null){
+      namedSecret.setSecretName(newSecretName);
+      return save(namedSecret);
+    }
+
+    return (Z)findMostRecent(namedSecret.getName());
+
   }
 
   public List<String> findAllPaths() {
@@ -148,6 +169,14 @@ public class SecretDataService {
       return secretNameRepository.saveAndFlush(new SecretName(name));
     } catch (DataIntegrityViolationException | ConstraintViolationException e) {
       return secretNameRepository.findOneByNameIgnoreCase(name);
+    }
+  }
+
+  private SecretName createSecretName(String name) {
+    try {
+      return secretNameRepository.saveAndFlush(new SecretName(name));
+    } catch (DataIntegrityViolationException | ConstraintViolationException e) {
+      return null;
     }
   }
 
