@@ -39,8 +39,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-import javax.annotation.PostConstruct;
-import javax.servlet.http.HttpServletRequest;
+import static com.google.common.collect.Lists.newArrayList;
+import static io.pivotal.security.entity.AuditingOperationCode.CREDENTIAL_ACCESS;
+import static io.pivotal.security.entity.AuditingOperationCode.CREDENTIAL_FIND;
+import static io.pivotal.security.entity.AuditingOperationCode.CREDENTIAL_UPDATE;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.NoSuchAlgorithmException;
@@ -49,10 +52,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
-import static com.google.common.collect.Lists.newArrayList;
-import static io.pivotal.security.entity.AuditingOperationCode.CREDENTIAL_ACCESS;
-import static io.pivotal.security.entity.AuditingOperationCode.CREDENTIAL_FIND;
-import static io.pivotal.security.entity.AuditingOperationCode.CREDENTIAL_UPDATE;
+import javax.annotation.PostConstruct;
+import javax.servlet.http.HttpServletRequest;
 
 @RestController
 @RequestMapping(path = SecretsController.API_V1_DATA, produces = MediaType.APPLICATION_JSON_UTF8_VALUE)
@@ -253,18 +254,16 @@ public class SecretsController {
     }
     NamedSecret existingNamedSecret = secretDataService.findMostRecent(secretName);
 
-    boolean willBeCreated = existingNamedSecret == null;
     boolean overwrite = BooleanUtils.isTrue(parsedRequestBody.read("$.overwrite", Boolean.class));
     boolean regenerate = BooleanUtils.isTrue(parsedRequestBody.read("$.regenerate", Boolean.class));
 
-    boolean willWrite = willBeCreated || overwrite || regenerate;
-    AuditingOperationCode operationCode = willWrite ? CREDENTIAL_UPDATE : CREDENTIAL_ACCESS;
-    return auditLogService.performWithAuditing(new AuditRecordBuilder(operationCode, secretName, request, authentication), () -> {
+    final AuditRecordBuilder auditRecordBuilder = new AuditRecordBuilder(CREDENTIAL_UPDATE, secretName, request, authentication);
+    return auditLogService.performWithAuditing(auditRecordBuilder, () -> {
       if (regenerate && existingNamedSecret == null) {
         return createErrorResponse("error.credential_not_found", HttpStatus.NOT_FOUND);
       }
 
-      return storeSecret(secretName, handler, parsedRequestBody, existingNamedSecret, willWrite);
+      return storeSecret(auditRecordBuilder, secretName, handler, parsedRequestBody, existingNamedSecret, regenerate, overwrite);
     });
   }
 
@@ -272,11 +271,11 @@ public class SecretsController {
     return sanitizedName(parsed.read("$.name", String.class));
   }
 
-  private ResponseEntity<?> storeSecret(String secretPath,
+  private ResponseEntity<?> storeSecret(AuditRecordBuilder auditRecordBuilder, String secretPath,
                                         SecretKindMappingFactory namedSecretHandler,
                                         DocumentContext parsed,
                                         NamedSecret existingNamedSecret,
-                                        boolean willWrite) {
+                                        boolean regenerate, boolean overwrite) {
     try {
       String requestedSecretType = parsed.read("$.type");
       final SecretKind secretKind = (existingNamedSecret != null ?
@@ -287,7 +286,7 @@ public class SecretsController {
       secretPath = existingNamedSecret == null ? secretPath : existingNamedSecret.getName();
 
       NamedSecret storedNamedSecret;
-      if (willWrite) {
+      if (!regenerate) {
         storedNamedSecret = secretKind.lift(namedSecretHandler.make(secretPath, parsed)).apply(existingNamedSecret);
         storedNamedSecret = secretDataService.save(storedNamedSecret);
       } else {
@@ -296,6 +295,10 @@ public class SecretsController {
         // As above, the unit tests won't catch (all) issues :( , but there is an integration test to cover it.
         storedNamedSecret = existingNamedSecret;
         secretKind.lift(namedSecretHandler.make(secretPath, parsed)).apply(null);
+      }
+
+      if (!overwrite && existingNamedSecret != null && existingNamedSecret.getVersionCreatedAt().equals(storedNamedSecret.getVersionCreatedAt())) {
+        auditRecordBuilder.setOperationCode(CREDENTIAL_ACCESS);
       }
 
       SecretView secretView = SecretView.fromEntity(storedNamedSecret);
