@@ -120,12 +120,13 @@ public class SecretDataService {
     SecretName secretName = secretNameRepository.findOneByNameIgnoreCase(addLeadingSlashIfMissing(name));
 
     if (secretName != null) {
-      return secretRepository.deleteBySecretNameUuid(secretName.getUuid());
+      return secretNameRepository.deleteByName(secretName.getName());
     } else {
       return 0;
     }
   }
 
+  // TODO make this a test-specific subclass? because self-destruct buttons in production code are scary
   public void deleteAll() { secretRepository.deleteAll(); }
 
   public List<NamedSecret> findAllByName(String name) {
