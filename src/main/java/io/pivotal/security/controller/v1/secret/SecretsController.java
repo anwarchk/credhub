@@ -7,7 +7,6 @@ import io.pivotal.security.controller.v1.ResponseErrorType;
 import io.pivotal.security.controller.v1.SecretKindMappingFactory;
 import io.pivotal.security.data.SecretDataService;
 import io.pivotal.security.domain.NamedSecret;
-import io.pivotal.security.entity.AuditingOperationCode;
 import io.pivotal.security.service.AuditLogService;
 import io.pivotal.security.service.AuditRecordBuilder;
 import io.pivotal.security.util.CurrentTimeProvider;
@@ -39,11 +38,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-import static com.google.common.collect.Lists.newArrayList;
-import static io.pivotal.security.entity.AuditingOperationCode.CREDENTIAL_ACCESS;
-import static io.pivotal.security.entity.AuditingOperationCode.CREDENTIAL_FIND;
-import static io.pivotal.security.entity.AuditingOperationCode.CREDENTIAL_UPDATE;
-
+import javax.annotation.PostConstruct;
+import javax.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.NoSuchAlgorithmException;
@@ -52,8 +48,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
-import javax.annotation.PostConstruct;
-import javax.servlet.http.HttpServletRequest;
+import static com.google.common.collect.Lists.newArrayList;
+import static io.pivotal.security.entity.AuditingOperationCode.CREDENTIAL_ACCESS;
+import static io.pivotal.security.entity.AuditingOperationCode.CREDENTIAL_FIND;
+import static io.pivotal.security.entity.AuditingOperationCode.CREDENTIAL_UPDATE;
 
 @RestController
 @RequestMapping(path = SecretsController.API_V1_DATA, produces = MediaType.APPLICATION_JSON_UTF8_VALUE)
@@ -286,9 +284,9 @@ public class SecretsController {
       secretPath = existingNamedSecret == null ? secretPath : existingNamedSecret.getName();
 
       NamedSecret storedNamedSecret;
-      if (!regenerate) {
+      if (overwrite || regenerate || existingNamedSecret == null) {
         storedNamedSecret = secretKind.lift(namedSecretHandler.make(secretPath, parsed)).apply(existingNamedSecret);
-        storedNamedSecret = secretDataService.save(storedNamedSecret);
+        storedNamedSecret = secretDataService.save(storedNamedSecret, overwrite);
       } else {
         // To catch invalid parameters, validate request even though we throw away the result.
         // We need to apply it to null or Hibernate may decide to save the record.
@@ -297,7 +295,8 @@ public class SecretsController {
         secretKind.lift(namedSecretHandler.make(secretPath, parsed)).apply(null);
       }
 
-      if (!overwrite && existingNamedSecret != null && existingNamedSecret.getVersionCreatedAt().equals(storedNamedSecret.getVersionCreatedAt())) {
+      if (!overwrite && existingNamedSecret != null &&
+        existingNamedSecret.getVersionCreatedAt().equals(storedNamedSecret.getVersionCreatedAt())) {
         auditRecordBuilder.setOperationCode(CREDENTIAL_ACCESS);
       }
 

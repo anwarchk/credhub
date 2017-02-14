@@ -1,10 +1,13 @@
 package io.pivotal.security.integration;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.greghaskins.spectrum.Spectrum;
 import io.pivotal.security.CredentialManagerApp;
+import io.pivotal.security.controller.v1.PasswordGenerationParameters;
 import io.pivotal.security.data.EncryptionKeyCanaryDataService;
 import io.pivotal.security.data.SecretDataService;
 import io.pivotal.security.domain.NamedCertificateSecret;
+import io.pivotal.security.domain.NamedPasswordSecret;
 import io.pivotal.security.domain.NamedSecret;
 import io.pivotal.security.entity.EncryptionKeyCanary;
 import io.pivotal.security.entity.SecretEncryptionHelper;
@@ -37,7 +40,9 @@ import static javax.xml.bind.DatatypeConverter.parseHexBinary;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.samePropertyValuesAs;
 import static org.hamcrest.core.IsNot.not;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -69,6 +74,8 @@ public class EncryptionKeyRotatorTest {
   private EncryptionKeyCanary unknownCanary;
   private EncryptionKeyCanary oldCanary;
 
+  private String passwordName;
+
   {
     wireAndUnwire(this, false);
 
@@ -76,7 +83,7 @@ public class EncryptionKeyRotatorTest {
       beforeEach(() -> {
         secretWithCurrentKey = new NamedCertificateSecret("cert");
         encryptionHelper.refreshEncryptedValue(secretWithCurrentKey, "cert-private-key");
-        secretDataService.save(secretWithCurrentKey);
+        secretDataService.save(secretWithCurrentKey, true);
 
         Key oldKey = new SecretKeySpec(parseHexBinary("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"), 0, 16, "AES");
         oldCanary = new EncryptionKeyCanary();
@@ -92,7 +99,7 @@ public class EncryptionKeyRotatorTest {
         secretWithOldKey.setEncryptedValue(encryption.encryptedValue);
         secretWithOldKey.setNonce(encryption.nonce);
         secretWithOldKey.setEncryptionKeyUuid(oldCanary.getUuid());
-        secretDataService.save(secretWithOldKey);
+        secretDataService.save(secretWithOldKey, true);
 
         unknownCanary = new EncryptionKeyCanary();
         unknownCanary.setEncryptedValue("bad-encrypted-value".getBytes());
@@ -102,7 +109,21 @@ public class EncryptionKeyRotatorTest {
         secretWithUnknownKey = new NamedCertificateSecret("cert");
         encryptionHelper.refreshEncryptedValue(secretWithUnknownKey, "cert-private-key");
         secretWithUnknownKey.setEncryptionKeyUuid(unknownCanary.getUuid());
-        secretDataService.save(secretWithUnknownKey);
+        secretDataService.save(secretWithUnknownKey, true);
+
+        passwordName = "/test-password";
+        NamedPasswordSecret password = new NamedPasswordSecret(passwordName);
+        final Encryption secretEncryption = encryptionService.encrypt(oldKey, "test-password-plaintext");
+        password.setEncryptedValue(secretEncryption.encryptedValue);
+        password.setNonce(secretEncryption.nonce);
+        PasswordGenerationParameters parameters = new PasswordGenerationParameters();
+        parameters.setExcludeNumber(true);
+        final Encryption parameterEncryption = encryptionService.encrypt(oldKey, new ObjectMapper().writeValueAsString(parameters));
+        password.setEncryptedGenerationParameters(parameterEncryption.encryptedValue);
+        password.setParametersNonce(parameterEncryption.nonce);
+        password.setEncryptionKeyUuid(oldCanary.getUuid());
+
+        secretDataService.save(password, true);
       });
 
       afterEach(() -> {
@@ -115,7 +136,7 @@ public class EncryptionKeyRotatorTest {
         encryptionKeyRotator.rotate();
 
         ArgumentCaptor<NamedSecret> argumentCaptor = ArgumentCaptor.forClass(NamedSecret.class);
-        verify(encryptionHelper).rotate(argumentCaptor.capture());
+        verify(encryptionHelper, times(2)).rotate(argumentCaptor.capture());
         List<NamedSecret> namedSecrets = argumentCaptor.getAllValues();
         List<UUID> uuids = namedSecrets.stream().map(secret -> secret.getUuid()).collect(Collectors.toList());
 
@@ -130,6 +151,14 @@ public class EncryptionKeyRotatorTest {
         // Unchanged because it's already up to date:
         assertThat(secretDataService.findByUuid(secretWithCurrentKey.getUuid()).getEncryptionKeyUuid(), equalTo(encryptionKeyCanaryMapper.getActiveUuid()));
         assertThat(uuids, not(hasItem(secretWithCurrentKey.getUuid())));
+
+        NamedPasswordSecret rotatedPassword = (NamedPasswordSecret) secretDataService.findMostRecent(passwordName);
+        assertThat(rotatedPassword.getValue(), equalTo("test-password-plaintext"));
+        assertThat(rotatedPassword.getGenerationParameters(), samePropertyValuesAs(
+          new PasswordGenerationParameters()
+            .setExcludeNumber(true)
+            .setLength(23))
+        );
       });
     });
 

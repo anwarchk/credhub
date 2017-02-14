@@ -1,7 +1,10 @@
 package io.pivotal.security.integration;
 
 import com.greghaskins.spectrum.Spectrum;
+import com.jayway.jsonpath.DocumentContext;
+import com.jayway.jsonpath.JsonPath;
 import io.pivotal.security.CredentialManagerApp;
+import io.pivotal.security.service.EncryptionKeyCanaryMapper;
 import io.pivotal.security.util.DatabaseProfileResolver;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,17 +16,17 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
+import java.time.Instant;
+import java.util.function.Consumer;
+
 import static com.greghaskins.spectrum.Spectrum.beforeEach;
 import static com.greghaskins.spectrum.Spectrum.describe;
 import static com.greghaskins.spectrum.Spectrum.it;
 import static io.pivotal.security.helper.SpectrumHelper.mockOutCurrentTimeProvider;
 import static io.pivotal.security.helper.SpectrumHelper.wireAndUnwire;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-
-import java.time.Instant;
-import java.util.function.Consumer;
 
 @RunWith(Spectrum.class)
 @ActiveProfiles(value = "unit-test", resolver = DatabaseProfileResolver.class)
@@ -32,6 +35,8 @@ public class NoOverwriteTest {
   @Autowired
   WebApplicationContext webApplicationContext;
 
+  @Autowired
+  EncryptionKeyCanaryMapper encryptionKeyCanaryMapper;
   private ResultActions[] responses;
   private Thread thread1;
   private Thread thread2;
@@ -47,6 +52,7 @@ public class NoOverwriteTest {
     fakeTimeSetter = mockOutCurrentTimeProvider(this);
 
     beforeEach(() -> {
+      encryptionKeyCanaryMapper.mapUuidsToKeys();
       fakeTimeSetter.accept(FROZEN_TIME.toEpochMilli());
       mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
     });
@@ -101,13 +107,10 @@ public class NoOverwriteTest {
         thread1.join();
         thread2.join();
 
-        try {
-          responses[0].andExpect(jsonPath("$.value").value("first-value"));
-          responses[1].andExpect(jsonPath("$.value").value("first-value"));
-        } catch (AssertionError e) {
-          responses[0].andExpect(jsonPath("$.value").value("second-value"));
-          responses[1].andExpect(jsonPath("$.value").value("second-value"));
-        }
+        DocumentContext response1 = JsonPath.parse(responses[0].andReturn().getResponse().getContentAsString());
+        DocumentContext response2 = JsonPath.parse(responses[1].andReturn().getResponse().getContentAsString());
+
+        assertThat(response2.read("$.value").equals(response1.read("$.value")));
       });
     });
   }

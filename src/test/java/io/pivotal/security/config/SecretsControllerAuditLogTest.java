@@ -130,7 +130,7 @@ public class SecretsControllerAuditLogTest {
 
     describe("when a request to set credential is served", () -> {
       beforeEach(() -> {
-        when(secretDataService.save(any())).thenAnswer(invocation -> {
+        when(secretDataService.save(any(), eq(false))).thenAnswer(invocation -> {
           NamedValueSecret namedValueSecret = invocation.getArgumentAt(0, NamedValueSecret.class);
           namedValueSecret.setUuid(UUID.randomUUID());
           return namedValueSecret;
@@ -168,7 +168,7 @@ public class SecretsControllerAuditLogTest {
 
     describe("when a request to generate a credential is served", () -> {
       beforeEach(() -> {
-        when(secretDataService.save(any())).thenAnswer(invocation -> {
+        when(secretDataService.save(any(), eq(false))).thenAnswer(invocation -> {
           NamedPasswordSecret namedPasswordSecret = invocation.getArgumentAt(0, NamedPasswordSecret.class);
           namedPasswordSecret.setUuid(UUID.randomUUID());
           return namedPasswordSecret;
@@ -255,7 +255,7 @@ public class SecretsControllerAuditLogTest {
 
     describe("when a request has multiple X-Forwarded-For headers set", () -> {
       beforeEach(() -> {
-        when(secretDataService.save(any())).thenAnswer(invocation -> {
+        when(secretDataService.save(any(), eq(false))).thenAnswer(invocation -> {
           NamedValueSecret namedValueSecret = invocation.getArgumentAt(0, NamedValueSecret.class);
           namedValueSecret.setUuid(UUID.randomUUID());
           return namedValueSecret;

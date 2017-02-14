@@ -44,6 +44,7 @@ import static org.hamcrest.CoreMatchers.nullValue;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.isA;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
@@ -82,7 +83,7 @@ public class SecretsControllerSetTest {
 
   private final Consumer<Long> fakeTimeSetter;
 
-  private final String secretName = "my-namespace/subTree/secret-name";
+  private final String secretName = "my-namespace/secretForSetTest/secret-name";
 
   private ResultActions response;
 
@@ -167,7 +168,7 @@ public class SecretsControllerSetTest {
 
         doReturn(
             valueSecret
-        ).when(secretDataService).save(any(NamedValueSecret.class));
+        ).when(secretDataService).save(any(NamedValueSecret.class), eq(false));
       });
 
       describe("via parameter in request body", () -> {
@@ -267,7 +268,7 @@ public class SecretsControllerSetTest {
         it("should return the updated value", () -> {
           ArgumentCaptor<NamedSecret> argumentCaptor = ArgumentCaptor.forClass(NamedSecret.class);
 
-          verify(secretDataService, times(1)).save(argumentCaptor.capture());
+          verify(secretDataService, times(1)).save(argumentCaptor.capture(), eq(true));
 
           // Because the data service mutates the original entity, the UUID should be set
           // on the original object during the save.
@@ -339,7 +340,7 @@ public class SecretsControllerSetTest {
                 "}"))
             .andExpect(status().isOk());
         ArgumentCaptor<NamedPasswordSecret> captor = ArgumentCaptor.forClass(NamedPasswordSecret.class);
-        verify(secretDataService).save(captor.capture());
+        verify(secretDataService).save(captor.capture(), eq(true));
         assertThat(captor.getValue().getEncryptedGenerationParameters(), nullValue());
       });
     });
@@ -359,7 +360,7 @@ public class SecretsControllerSetTest {
     it("asks the data service to persist the secret", () -> {
       ArgumentCaptor<NamedValueSecret> argumentCaptor = ArgumentCaptor.forClass(NamedValueSecret.class);
 
-      verify(secretDataService, times(1)).save(argumentCaptor.capture());
+      verify(secretDataService, times(1)).save(argumentCaptor.capture(), eq(false));
 
       NamedValueSecret namedValueSecret = argumentCaptor.getValue();
       assertThat(namedValueSecret.getValue(), equalTo(secretValue));
@@ -478,7 +479,7 @@ public class SecretsControllerSetTest {
     valueSecret.setValue(value);
     doReturn(
         valueSecret
-    ).when(secretDataService).save(any(NamedValueSecret.class));
+    ).when(secretDataService).save(any(NamedValueSecret.class), eq(true));
 
     final MockHttpServletRequestBuilder put = put("/api/v1/data")
         .accept(APPLICATION_JSON)

@@ -34,7 +34,7 @@ public class EncryptionKeyRotator {
     while (secretsEncryptedByOldKey.hasContent()) {
       for (NamedSecret secret : secretsEncryptedByOldKey.getContent()) {
         secretEncryptionHelper.rotate(secret);
-        secretDataService.save(secret);
+        secretDataService.save(secret, true);
         rotatedRecordCount++;
       }
       secretsEncryptedByOldKey = secretDataService.findEncryptedWithAvailableInactiveKey();

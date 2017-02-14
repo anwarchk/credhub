@@ -41,6 +41,7 @@ import static io.pivotal.security.entity.AuditingOperationCode.CREDENTIAL_UPDATE
 import static io.pivotal.security.helper.SpectrumHelper.mockOutCurrentTimeProvider;
 import static io.pivotal.security.helper.SpectrumHelper.wireAndUnwire;
 import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.not;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
@@ -116,7 +117,7 @@ public class SecretsControllerGenerateTest {
           secret.setUuid(uuid);
           secret.setVersionCreatedAt(frozenTime);
           return secret;
-        }).when(secretDataService).save(any(NamedSecret.class));
+        }).when(secretDataService).save(any(NamedSecret.class), eq(false));
       });
 
       it("for a new value secret should return an error message", () -> {
@@ -170,7 +171,7 @@ public class SecretsControllerGenerateTest {
 
         it("asks the data service to persist the secret", () -> {
           ArgumentCaptor<NamedPasswordSecret> argumentCaptor = ArgumentCaptor.forClass(NamedPasswordSecret.class);
-          verify(secretDataService, times(1)).save(argumentCaptor.capture());
+          verify(secretDataService, times(1)).save(argumentCaptor.capture(), eq(false));
 
           NamedPasswordSecret newPassword = argumentCaptor.getValue();
 
@@ -194,8 +195,8 @@ public class SecretsControllerGenerateTest {
           expectedSecret.setValue(fakePassword);
           doReturn(expectedSecret
               .setUuid(uuid)
-              .setVersionCreatedAt(frozenTime))
-              .when(secretDataService).findMostRecent(secretName);
+              .setVersionCreatedAt(frozenTime.minusSeconds(10)))
+            .when(secretDataService).findMostRecent(secretName);
           resetAuditLogMock();
         });
 
@@ -213,12 +214,12 @@ public class SecretsControllerGenerateTest {
             response = mockMvc.perform(post);
           });
 
-          it("should return the correct response", () -> {
+          it("should return updated values", () -> {
             response.andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(APPLICATION_JSON))
                 .andExpect(jsonPath("$.type").value("password"))
                 .andExpect(jsonPath("$.value").value(fakePassword))
-                .andExpect(jsonPath("$.id").value(uuid.toString()))
+                .andExpect(jsonPath("$.id").value(not(uuid.toString())))
                 .andExpect(jsonPath("$.version_created_at").value(frozenTime.toString()));
           });
 
@@ -249,13 +250,13 @@ public class SecretsControllerGenerateTest {
             response = mockMvc.perform(post);
           });
 
-          it("should return the expected response", () -> {
+          it("should return the existing values", () -> {
             response.andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(APPLICATION_JSON))
                 .andExpect(jsonPath("$.type").value("password"))
                 .andExpect(jsonPath("$.value").value(fakePassword))
                 .andExpect(jsonPath("$.id").value(uuid.toString()))
-                .andExpect(jsonPath("$.version_created_at").value(frozenTime.toString()));
+                .andExpect(jsonPath("$.version_created_at").value(frozenTime.minusSeconds(10).toString()));
           });
 
           it("validates parameters", () -> {
@@ -263,7 +264,7 @@ public class SecretsControllerGenerateTest {
           });
 
           it("should not persist the secret", () -> {
-            verify(secretDataService, times(0)).save(any(NamedSecret.class));
+            verify(secretDataService, times(0)).save(any(NamedSecret.class), eq(false));
           });
 
           it("persists an audit entry", () -> {
@@ -279,7 +280,7 @@ public class SecretsControllerGenerateTest {
         it("returns 400 when type is not present", () -> {
           mockMvc.perform(post("/api/v1/data")
               .accept(APPLICATION_JSON)
-              .content("{\"name\":\"" + secretName+ "\"}")
+              .content("{\"name\":\"some-new-secret-name\"}")
           )
               .andExpect(status().isBadRequest())
               .andExpect(jsonPath("$.error").value("The request does not include a valid type. Please validate your input and retry your request."));

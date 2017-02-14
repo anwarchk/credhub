@@ -40,6 +40,7 @@ import static io.pivotal.security.helper.SpectrumHelper.wireAndUnwire;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.isA;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
@@ -108,6 +109,7 @@ public class SecretsControllerRegenerateTest {
         originalSecret.setValue("original-password");
         PasswordGenerationParameters generationParameters = new PasswordGenerationParameters();
         generationParameters.setExcludeNumber(true);
+        originalSecret.setVersionCreatedAt(frozenTime.plusSeconds(1));
         originalSecret.setGenerationParameters(generationParameters);
 
         doReturn(originalSecret).when(secretDataService).findMostRecent("my-password");
@@ -118,7 +120,7 @@ public class SecretsControllerRegenerateTest {
           newSecret.setUuid(uuid);
           newSecret.setVersionCreatedAt(frozenTime.plusSeconds(10));
           return newSecret;
-        }).when(secretDataService).save(any(NamedPasswordSecret.class));
+        }).when(secretDataService).save(any(NamedPasswordSecret.class), eq(false));
 
         resetAuditLogMock();
 
@@ -138,7 +140,7 @@ public class SecretsControllerRegenerateTest {
             .andExpect(jsonPath("$.version_created_at").value(frozenTime.plusSeconds(10).toString()));
 
         ArgumentCaptor<NamedPasswordSecret> argumentCaptor = ArgumentCaptor.forClass(NamedPasswordSecret.class);
-        verify(secretDataService, times(1)).save(argumentCaptor.capture());
+        verify(secretDataService, times(1)).save(argumentCaptor.capture(), eq(false));
 
         NamedPasswordSecret newPassword = argumentCaptor.getValue();
 
@@ -160,6 +162,8 @@ public class SecretsControllerRegenerateTest {
 
     describe("regenerate request for a non-existent secret", () -> {
       beforeEach(() -> {
+        doReturn(null).when(secretDataService).findMostRecent("my-password");
+
         response = mockMvc.perform(post("/api/v1/data")
             .accept(APPLICATION_JSON)
             .contentType(APPLICATION_JSON)

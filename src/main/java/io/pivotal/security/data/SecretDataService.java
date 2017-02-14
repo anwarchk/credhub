@@ -72,7 +72,7 @@ public class SecretDataService {
     this.encryptor = encryptor;
   }
 
-  public <Z extends NamedSecret> Z save(Z namedSecret) {
+  public <Z extends NamedSecret> Z save(Z namedSecret, boolean overwrite) {
     namedSecret.getSecretName().setName(addLeadingSlashIfMissing(namedSecret.getName()));
     if (namedSecret.getEncryptionKeyUuid() == null) {
       namedSecret.setEncryptionKeyUuid(encryptionKeyCanaryMapper.getActiveUuid());
@@ -80,10 +80,29 @@ public class SecretDataService {
 
     SecretName secretName = namedSecret.getSecretName();
 
-    if (secretName.getUuid() == null) {
+    if (secretName.getUuid() == null || overwrite) {
       namedSecret.setSecretName(createOrFindSecretName(secretName.getName()));
+    } else if (secretName.getUuid() == null){
+////      SecretName newSecretName = createSecretName(secretName.getName());
+////      if (newSecretName == null) {
+////        return (Z) findMostRecent(secretName.getName());
+////      }
+////      namedSecret.setSecretName(newSecretName);
+   }
+    boolean exists = secretName.getUuid() != null;
+    if (overwrite && exists)
+    {
+      //falls through to save & flush
+    } else if (overwrite && !exists) {
+      namedSecret.setSecretName(createOrFindSecretName(secretName.getName()));
+    } else if (!overwrite && exists) {
+      // do nothing right?
+      return (Z) findMostRecent(secretName.getName());
+    } else if (!overwrite && ! exists) {
+      SecretName newSecretName = createSecretName(secretName.getName());
     }
-
+    // todo: why do saveAndFlush on namedSecret
+    // also check if overwrite=false is doing the right thing for an existing secret
     return (Z) wrap(namedSecret.saveAndFlush(secretRepository));
   }
 
@@ -163,6 +182,14 @@ public class SecretDataService {
       return secretNameRepository.saveAndFlush(new SecretName(name));
     } catch (DataIntegrityViolationException | ConstraintViolationException e) {
       return secretNameRepository.findOneByNameIgnoreCase(name);
+    }
+  }
+
+  private SecretName createSecretName(String name) {
+    try {
+      return secretNameRepository.saveAndFlush(new SecretName(name));
+    } catch (DataIntegrityViolationException | ConstraintViolationException e) {
+      return null;
     }
   }
 

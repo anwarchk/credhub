@@ -54,9 +54,9 @@ public class EncryptionKeyRotatorTest {
     });
 
     it("should save all the secrets, CAs that were rotated", () -> {
-      verify(secretDataService).save(certificateSecret);
-      verify(secretDataService).save(passwordSecret);
-      verify(secretDataService).save(sshSecret);
+      verify(secretDataService).save(certificateSecret, true);
+      verify(secretDataService).save(passwordSecret, true);
+      verify(secretDataService).save(sshSecret, true);
     });
   }
 }

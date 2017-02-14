@@ -28,6 +28,7 @@ import static com.greghaskins.spectrum.Spectrum.describe;
 import static com.greghaskins.spectrum.Spectrum.it;
 import static io.pivotal.security.helper.SpectrumHelper.wireAndUnwire;
 import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -87,7 +88,7 @@ public class SecurityConfigurationTest {
 
     describe("with a token accepted by our security config", () -> {
       it("allows access", () -> {
-        when(secretDataService.save(any())).thenAnswer(invocation -> {
+        when(secretDataService.save(any(), eq(false))).thenAnswer(invocation -> {
           NamedPasswordSecret namedPasswordSecret = invocation.getArgumentAt(0, NamedPasswordSecret.class);
           namedPasswordSecret.setUuid(UUID.randomUUID());
           namedPasswordSecret.setVersionCreatedAt(Instant.now());
